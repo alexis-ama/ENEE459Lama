@@ -1,4 +1,4 @@
-"""Probes — read what the machine says about itself.
+""""Probes -- read what the machine says about itself.
 
 INSTRUCTOR SOLUTION. Do not distribute. The student copy of this file has the
 body of every function below replaced by `raise NotImplementedError`.
@@ -7,7 +7,7 @@ Every probe takes a `root` argument and reads nothing outside it. That is not
 decoration: it is what makes this lab gradeable without twenty boards on a
 desk, and it is the reason the test suite can present a fake SD-booted machine
 and check that the student's code notices. Code that hardcodes "/" cannot be
-tested, and a measurement you cannot test is a measurement you cannot trust —
+tested, and a measurement you cannot test is a measurement you cannot trust --
 which is the whole argument of Lecture 01, applied to the student's own code.
 
 Each probe returns a dict with, at minimum, a `value` and a `source` key. The
@@ -24,6 +24,10 @@ from pathlib import Path
 from typing import Any
 import pdb
 import json
+import regex
+import os
+import glob
+
 
 # ---------------------------------------------------------------------------
 # Small helpers. These are given to students; the exercise is the probes.
@@ -78,7 +82,7 @@ _WIDTH_RE = re.compile(r"Width\s+x(\d+)")
 #
 # Keyed by float, not by the string lspci printed. Keying by string means
 # deciding whether "8", "8.0" and "08" are the same rate, and the obvious
-# normalisation — stripping trailing zeros and dots — silently turns 20 into 2.
+# normalisation -- stripping trailing zeros and dots -- silently turns 20 into 2.
 _GEN_BY_GTS = {2.5: 1, 5.0: 2, 8.0: 3, 16.0: 4, 32.0: 5, 64.0: 6}
 
 
@@ -93,11 +97,11 @@ def _parse_link_line(line: str) -> dict[str, Any]:
         "gen": _GEN_BY_GTS.get(gts) if gts is not None else None,
     }
 
-def generate_interpretation_string(neg_speed, cap_speed):
+def generate_interpretation_string(neg_speed, cap_speed, capability, negotiated):
     if cap_speed > neg_speed:
         interpretation = (
             f"drive capable of Gen{capability['gen']}, link running at "
-            f"Gen{negotiated['gen']} — expected on this carrier board, "
+            f"Gen{negotiated['gen']} -- expected on this carrier board, "
             "whose M.2 Key-M slot is wired Gen3 x4"
         )
     else:
@@ -117,7 +121,7 @@ def generate_interpretation_string(neg_speed, cap_speed):
 def probe_module_model(root: Path = Path("/")) -> dict[str, Any]:
     """Which board is this?
 
-    The device tree model string is the most trustworthy identity on a Jetson —
+    The device tree model string is the most trustworthy identity on a Jetson --
     it comes from the hardware description the bootloader handed the kernel,
     not from anything installed afterwards.
     """
@@ -128,11 +132,12 @@ def probe_module_model(root: Path = Path("/")) -> dict[str, Any]:
 
     # if unable to read, return an empty dictionary by calling unknown().
     if not raw:
-        return unknown(src, "device tree model node absent — not a Jetson, or /proc not mounted")
+        return unknown(src, "device tree model node absent -- not a Jetson, or /proc not mounted")
     
-    # step 2: strip null bytes and whitespace from raw string
+    # step 2: strip null bytes and (leading and ending) whitespace from raw string
     raw = raw.rstrip("\x00").strip()
     return {"value": raw, "source": src, "status": "ok"}
+
 
 # todo by students
 def probe_memory_total_kb(root: Path = Path("/")) -> dict[str, Any]:
@@ -143,15 +148,30 @@ def probe_memory_total_kb(root: Path = Path("/")) -> dict[str, Any]:
     ever sees the pool. Students are expected to notice and to explain it in
     their report rather than round it up.
     """
+
+    src = "/proc/meminfo"
+    raw = read_text(root, src)
+
+    if not raw:
+        return unknown(src, "mem-info node absent -- not a Jetson, or /proc not mounted")
+        
+    m = re.search(r"^MemTotal:\s+(\d+)\s*kB", raw)
+
+    if m == None:
+        return unknown(src, "m is not a string")
+    elif m.group(1) == None:
+        return unknown(src, "number is not found")
     
     return {"value": int(m.group(1)), "source": src, "status": "ok"}
+    # group(1) is the first group, (\d+) "1 or more digits"
+    # \s is a space character
 
 
 def probe_root_source(root: Path = Path("/")) -> dict[str, Any]:
     """What device is the root filesystem actually mounted from?
 
     This is the probe the lab is built around. A unit that boots from the SD
-    card works, boots, and passes every casual inspection — and then runs the
+    card works, boots, and passes every casual inspection -- and then runs the
     semester's benchmarks against a card an order of magnitude slower than the
     NVMe sitting unused in the slot. The failure is silent, which is exactly
     why it has to be a command rather than an assumption.
@@ -159,8 +179,27 @@ def probe_root_source(root: Path = Path("/")) -> dict[str, Any]:
     /proc/mounts is preferred over `findmnt` because it needs no external
     binary and no elevation, and because it is what findmnt reads anyway.
     """
-    
-    return unknown(src, "no root mount entry found in mount table")
+    # going thru entire file and searching for /dev
+
+    src = "/proc/mounts"
+    raw = read_text(root, src)
+
+    if not raw:
+        return unknown(src, "no root mount entry found in mount table")    
+
+
+    m = re.search(r"(^/dev/nvme\w*)|(^/dev/mmcblk\w*)|(^/dev/sd\w*)", raw, re.MULTILINE)
+    # searches every line to see if the start is one of the above three match groups
+
+    if m == None:
+        return unknown(src, "m is not a string")
+
+    if m.group() == m.group(1):
+        return {"value": m.group(), "kind": "nvme", "source": src, "status": "ok"}
+    elif m.group() == m.group(2) or m.group() == m.group(3):
+        return {"value": m.group(), "kind": "ssd", "source": src, "status": "ok"}
+    else:
+        return unknown(src, "/dev not found")
 
 
 def probe_nvme_present(root: Path = Path("/")) -> dict[str, Any]:
@@ -171,11 +210,27 @@ def probe_nvme_present(root: Path = Path("/")) -> dict[str, Any]:
     is what lets the troubleshooting tree in the lab guide send a student to
     the right branch.
     """
+
+    src = "/sys/block/nvme0n1"
+    value = os.path.exists(src)
+
+    if value == False:
+        return unknown(src, "/sys/block/nvme0n1 does not exist")   
+
+    raw = read_text(os.path.join(src, "device/model"), "") # type: ignore
     
-    return {
-        "value": ,
-        "model": ,
-        "source": ,
+    if not raw:
+        return unknown(src, "no root mount entry found in mount table")  
+    
+    raw = raw.rstrip("\x00").strip()
+
+    if raw == None:
+        return unknown(src, "m is not a string")
+    else:
+        return {
+        "value": value,
+        "model": raw,
+        "source": src,
         "status": "ok",
     }
 
@@ -191,17 +246,38 @@ def probe_pcie_link(root: Path = Path("/"), lspci_output: str | None = None) -> 
     `lspci_output` exists so the tests can drive this without root or hardware.
     In normal use it is None and the probe shells out.
     """
+
+    # Step 1 & 2
+    lspci_output = run(["lspci", "-vv"])
+
+    if lspci_output == None:
+        return unknown("lspci -vv", "lspci_output is None")
+    
+    # Step 3
+    lnkCap = re.search(r"(LnkCap.*)\n", lspci_output, re.MULTILINE)
+    # Step 4
+    lnkSta = re.search(r"(LnkSta.*)\n", lspci_output, re.MULTILINE)
+
+    # Step 5
+    if lnkCap and lnkSta:
+        capability = _parse_link_line(lnkCap.group(1)) # cap dictionary
+        negotiated = _parse_link_line(lnkSta.group(1)) # neg dictionary
+
+        # Step 6
+        interp = generate_interpretation_string(negotiated["gts"], capability["gts"], capability, negotiated)
+
+        return {
+            "value": negotiated["raw"],
+            "negotiated": negotiated,
+            "capability": capability,
+            "source": "lspci -vv",
+            "status": "ok",
+            "interpretation": interp
+        }
+    else:
+        return unknown("lspci -vv", "lnkCap or lnkSta is None")
         
-    return {
-        "value":,
-        "negotiated": ,
-        "capability": ,
-        "interpretation": ,
-        "source": ,
-        "status": "ok",
-    }
-
-
+    
 def probe_thermal_zones(root: Path = Path("/")) -> dict[str, Any]:
     """Every thermal zone the kernel exposes, in degrees C.
 
@@ -210,10 +286,32 @@ def probe_thermal_zones(root: Path = Path("/")) -> dict[str, Any]:
     than once, and it is a good, cheap lesson in reading units before reading
     numbers.
     """
+
+    base = Path(root) / "sys/class/thermal"
+    zones_lst = []
+    for zone in base.glob("thermal_zone*"):
+        # matches any file that has the above string in its path
+
+        try:
+            z_type = read_text(root, f"{zone}/type")
+            z_temp = read_text(root, f"{zone}/temp") # need f bc using var in string
+        except TypeError: # ignoring type errors but need try-except for code to work
+            continue
+
+        if z_type and z_temp:
+            entry = {"zone": zone.name,
+                    "type": z_type,
+                    "temp_c": int(z_temp)/1000}
+            zones_lst.append(entry)
+        else:
+            return unknown("/sys/class/thermal/thermal_zone*/temp", "z_type or z_temp is None")
+        
+    seq = [x['temp_c'] for x in zones_lst]
+
     return {
-        "value": ,
-        "zones": ,
-        "source": ,
+        "value": max(seq),
+        "zones": zones_lst,
+        "source": "/sys/class/thermal/thermal_zone*/temp",
         "status": "ok",
     }
 
@@ -226,12 +324,29 @@ def probe_power_mode(root: Path = Path("/"), nvpmodel_output: str | None = None)
     same model are usually reporting different power modes, and without this
     field there is no way to find that out after the fact.
     """
+
+    nvpmodel_output = run(["nvpmodel", "-q"])
+
+    if nvpmodel_output == None:
+        return unknown("nvpmodel -q", "lspci_output is None")
+    
+    m = re.search(r"NV Power Mode:\s*(.+)", nvpmodel_output, re.MULTILINE)
+    
+    if m == None:
+        return unknown("nvpmodel -q", "m is not a string")
+
+    mode_id = re.search(r"^\s*(\d+)\s*$", nvpmodel_output, re.MULTILINE)
+
+    if mode_id == None:
+            return unknown("nvpmodel -q", "mode_id is not a string")
+
     return {
-        "value": ,
-        "mode_id": ,
-        "source": ,
+        "value": m.group(1),
+        "mode_id": int(mode_id.group(1)),
+        "source": "nvpmodel -q",
         "status": "ok",
     }
+
 
 ## for debugging - uncomment the following lines for debugging.
 # if __name__ == "__main__":
@@ -253,4 +368,3 @@ if __name__ == "__main__":
     path = "system_report.json"
     with open(path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=4)
-
