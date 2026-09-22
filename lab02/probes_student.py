@@ -111,8 +111,19 @@ def probe_torch(env: Env) -> dict[str, Any]:
     return ret
 
 def probe_cuda(env: Env) -> dict[str, Any]:
-    #write your code here
-    pass
+    src = "/usr/local/cuda/version.json"
+
+    raw = read_text(env.root, src)
+    if not raw:
+        unknown(src, "CUDA toolkit manifest absent — no toolkit installed at /usr/local/cuda")
+    
+    try:
+        if raw: # need to include for some reason
+            data = json.loads(raw)
+    except (ValueError, json.JSONDecodeError):
+        unknown(src, "CUDA toolkit manifest is present but not valid JSON")
+    # pass
+    
 
 
 def probe_opencv(env: Env) -> dict[str, Any]:
