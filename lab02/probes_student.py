@@ -8,6 +8,8 @@ import sys
 from env import Env, ModuleNotAvailable, getattr_path, read_text, unknown, major_minor
 
 import torch
+import cv2
+import tensorrt
 
 # The NVIDIA-built PyTorch wheels for Jetson carry a local version segment —
 # the part after "+" — that names the NVIDIA container release. A wheel from
@@ -115,52 +117,108 @@ def probe_cuda(env: Env) -> dict[str, Any]:
 
     raw = read_text(env.root, src)
     if not raw:
-        unknown(src, "CUDA toolkit manifest absent — no toolkit installed at /usr/local/cuda")
+        return unknown(src, "CUDA toolkit manifest absent — no toolkit installed at /usr/local/cuda")
     
     try:
-        if raw: # need to include for some reason
-            data = json.loads(raw)
+        # if raw: # need to include for some reason
+        data = json.loads(raw)
     except (ValueError, json.JSONDecodeError):
         unknown(src, "CUDA toolkit manifest is present but not valid JSON")
     # pass
+
+    version = data.get("cuda", {}).get("version")
+    if not version:
+        unknown(src, "manifest present but names no cuda version")
+
+    return {"value": version, "source": src, "status": "ok", "line": major_minor(version)}
     
 
 
 def probe_opencv(env: Env) -> dict[str, Any]:
-    #write your code here
-    pass
+    src = "import cv2"
 
+    try:
+        env.importer("cv2")
+    except:
+        unknown(src, f"cv2 is not importable: {e}") # type: ignore
+
+    raw = getattr_path(cv2, "__version__")
+
+    counter = getattr_path(cv2, "cuda.getCudaEnabledDeviceCount")
+
+    
+    if callable(counter):
+        devices = int(counter()) # type: ignore
+        cuda_devices = devices
+
+        if cuda_devices != 0: 
+            detail = "built with CUDA, {devices} device(s) visible"
+        else:
+            detail = "the cv2.cuda namespace exists but reports no devices — this is a non-CUDA build"
+    else:
+        cuda_devices = None
+        detail = "no cv2.cuda namespace — a non-CUDA build, which is what JetPack ships"
+
+    return {"value": raw, "source": src, "status": "ok", "cuda_devices": cuda_devices, "cuda_enabled": bool(cuda_devices), "detail": detail}
 
 def probe_tensorrt(env: Env) -> dict[str, Any]:
-    # write your code here
-    pass
+    src = "import tensorrt"
 
+    try:
+        env.importer("tensorrt")
+    except ModuleNotAvailable: 
+        hint = ""
+        if (not env.python.prefix) and (env.python.prefix != env.python.base_prefix):
+            hint = " — you are inside a virtual environment, and TensorRT is a system package that a venv made without –system-site-packages cannot see"
+        else: 
+            unknown(src, f"tensorrt is not importable: {e}{hint}") # type: ignore
+
+    raw = getattr_path(tensorrt, "__version__")
+
+    if not raw:
+        unknown(src, "tensorrt imported but exposes no __version__")
+
+    return {"value": raw, "source": src, "status": "ok", "line": major_minor(str(raw))}
 
 def probe_l4t(env: Env) -> dict[str, Any]:
-    # write your code here
-    pass
+    src = "/etc/nv_tegra_release"
+
+    raw = read_text(env.root, src)
+
+    if not raw:
+        return unknown(src, "not a Jetson, or the L4T release file is absent")
+   
+    release = _L4T_RELEASE.search(raw)
+    revision = _L4T_REVISION.search(raw)
+
+    if (not release) or (not revision):
+        raw.splitlines()[0][:80]
+        return unknown(src, f"release file present but unparseable: {raw.splitlines()[0][:80]}")
+
+    version = f"{release.group(1)}.{revision.group(1)}"
+
+    return {"value": version, "source": src, "status": "ok", "line": major_minor(version), "raw":raw.splitlines()[0]}
 
 ## for debugging - uncomment the following lines for debugging.
-if __name__ == "__main__":
-    env = Env.real()
-    out = probe_torch(env)
-    print(out)
-
-# for generating system_report.json
 # if __name__ == "__main__":
-#     # calling base environment
 #     env = Env.real()
+#     out = probe_cuda(env)
+#     print(out)
 
-#     # testing probes
-#     report = {
-#         "probe_torch": probe_torch(env),
-#         "probe_cuda": probe_cuda(env),
-#         "probe_opencv": probe_opencv(env),
-#         "probe_tensorrt": probe_tensorrt(env),
-#         "probe_l4t": probe_l4t(env),
-#     }
+## for generating system_report.json
+if __name__ == "__main__":
+    # calling base environment
+    env = Env.real()
+
+    # testing probes
+    report = {
+        "probe_torch": probe_torch(env),
+        "probe_cuda": probe_cuda(env),
+        "probe_opencv": probe_opencv(env),
+        "probe_tensorrt": probe_tensorrt(env),
+        "probe_l4t": probe_l4t(env),
+    }
     
-    # path = "system_report.json"
-    # with open(path, "w", encoding="utf-8") as f:
-    #     json.dump(report, f, indent=4)
-
+    path = "system_report.json"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=4)
