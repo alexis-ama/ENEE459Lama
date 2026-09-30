@@ -143,7 +143,7 @@ def debug_single_function(func):
         print(f"Graph validation warnings: {validation_issues}")
 
     # if func is count_parameters, model_size_bytes, or count_activations, call it and print the result
-    # out = func(graph)
+    out = func(graph)
 
     # if func is to_flops, call it with a mock MAC finding and print the result
     mock_macs = computed(
@@ -155,8 +155,9 @@ def debug_single_function(func):
     flops_one = to_flops(mock_macs, convention="mac_is_one_flop")
 
     # see the output with print below
-    print()
+    print(out)
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    debug_single_function(count_parameters) ## CHANGE FOR TESTING

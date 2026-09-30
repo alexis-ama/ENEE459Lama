@@ -45,10 +45,62 @@ TIE_EXACT = True
 # 1. How many numbers are stored
 # ===========================================================================
 
+def _layer_parameters(ly: Layer) -> int:
+    if ly.kind == "conv":
+        c_out = ly.out_shape[0]
+        c_in = ly.in_shape[0]
+
+        if ly.kernel:
+            (k_h, k_w) = ly.kernel
+
+        else:
+            (k_h, k_w) = (1, 1)
+
+        n_weights = int(c_out * (c_in/ly.groups) * k_h * k_w)
+
+        if ly.bias:
+            return c_out + n_weights
+        else:
+            return n_weights
+
+    elif ly.kind == "linear":
+        f_out = ly.out_shape[0]
+        f_in = ly.in_shape[0]
+
+        if ly.bias:
+            weights = (f_out * f_in) + f_out
+        else:
+            weights = (f_out * f_in)
+
+        return weights
+
+    elif ly.kind == "bn":
+        return BN_PARAMS_PER_CHANNEL * ly.out_shape[0]
+
+    else:
+        return 0
+
 def count_parameters(graph: Graph) -> dict[str, Any]:
-    pass
+    # pass
+    per_layer = {}
+    
+    for ly in graph.layers:
+        param_count = _layer_parameters(ly)
+        per_layer[ly.name] = param_count
 
+    total = sum(per_layer.values())
 
+    return {
+        "value": total,
+        "source": f"{graph.name}: {len(graph)} layers, shapes from the description",
+        "status": "computed",
+        "per_layer": per_layer,
+        "includes_bias": True,
+        "excludes_bn_buffers": True,
+        "bn_params_per_channel": BN_PARAMS_PER_CHANNEL
+        }
+
+ 
 # ===========================================================================
 # 2. What those numbers weigh, which is not the size of the file
 # ===========================================================================
