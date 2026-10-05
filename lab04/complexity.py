@@ -128,7 +128,28 @@ def model_size_bytes(graph: Graph) -> dict[str, Any]:
     Returns a `computed` finding whose value is bytes, with the per-dtype
     breakdown that makes the first bullet checkable.
     """
-    pass
+    # pass
+
+    per_dtype = {} # mapping datatype names to byte counts
+    per_layer = {} # mapping layer names to byte counts
+    buffer_bytes = 0.0
+
+    for ly in graph.layers:
+        param_count = _layer_parameters(ly)
+        param_bytes = param_count * dtype_bytes(ly.weight_dtype)
+
+        per_dtype[ly.weight_dtype] = param_bytes
+
+        if ly.kind == "bn":
+            
+            buffer_elements = BN_BUFFERS_PER_CHANNEL * ly.out_shape[0]
+
+            buffer_bytes = buffer_elements * dtype_bytes(BUFFER_DTYPE)
+
+            per_dtype[BUFFER_DTYPE] = buffer_bytes
+
+        per_layer[ly.name] = param_bytes + buffer_bytes
+
 
 # ===========================================================================
 # 3. The memory nobody puts in the table
