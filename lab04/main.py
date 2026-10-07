@@ -155,9 +155,12 @@ def debug_single_function(func):
     flops_one = to_flops(mock_macs, convention="mac_is_one_flop")
 
     # see the output with print below
-    print(out)
+    # print(out)
+    # print(json.dumps(out, indent = 2))
+    # print(json.dumps(flops_two, indent = 2))
+    # print(json.dumps(flops_one, indent = 2))
 
 
 if __name__ == "__main__":
-    # main()
-    debug_single_function(count_parameters) ## CHANGE FOR TESTING
+    main()
+    # debug_single_function(to_flops) ## CHANGE FOR TESTING

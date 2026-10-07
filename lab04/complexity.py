@@ -11,6 +11,7 @@ from graph import (
     unknown,
 )
 
+import math
 
 FLOPS_PER_MAC = 2
 
@@ -135,25 +136,105 @@ def model_size_bytes(graph: Graph) -> dict[str, Any]:
     buffer_bytes = 0.0
 
     for ly in graph.layers:
-        param_count = _layer_parameters(ly)
-        param_bytes = param_count * dtype_bytes(ly.weight_dtype)
+        n = _layer_parameters(ly)
+        param_bytes = n * dtype_bytes(ly.weight_dtype) 
+        # num of bytes = number of layers * weight (byte size) of the layer
 
-        per_dtype[ly.weight_dtype] = param_bytes
+        # ly.weight_dtype is a datatype name (fp32, fp16, bf16, int8, or int4)
+        
+        if ly.weight_dtype in per_dtype:
+            per_dtype[ly.weight_dtype] = per_dtype[ly.weight_dtype] + param_bytes
+            # the only datatype that the sample graph layers have is fp32 so per_dtype's only key is fp32
+        else:
+            per_dtype[ly.weight_dtype] = param_bytes
 
-        if ly.kind == "bn":
-            
+        if ly.kind == "bn": # theres only ONE layer with kind of "bn"
+
+            # **1
             buffer_elements = BN_BUFFERS_PER_CHANNEL * ly.out_shape[0]
 
-            buffer_bytes = buffer_elements * dtype_bytes(BUFFER_DTYPE)
+            # **2
+            buffer_bytes = buffer_bytes + (buffer_elements * dtype_bytes(BUFFER_DTYPE))
+            # number of buffer byes
 
-            per_dtype[BUFFER_DTYPE] = buffer_bytes
+            # **3
+            if BUFFER_DTYPE in per_dtype:
+                per_dtype[BUFFER_DTYPE] = per_dtype[BUFFER_DTYPE] + buffer_bytes
+                # multiple layers can have the same d_type weight
+            else:
+                per_dtype[BUFFER_DTYPE] = buffer_bytes
 
-        per_layer[ly.name] = param_bytes + buffer_bytes
+            per_layer[ly.name] = int(param_bytes + buffer_bytes) # int cast to match sample output
+
+        else:
+            per_layer[ly.name] = int(param_bytes) # int cast to match sample output
+
+        # print(per_dtype)
+
+    total = int(sum(per_layer.values()))
+
+    return {
+        "value": total,
+        "source": f"{graph.name}: per-layer dtypes, buffers at {BUFFER_DTYPE}",
+        "status": "computed",
+        "per_layer": per_layer,
+        "per_dtype": per_dtype,
+        "buffer_bytes": buffer_bytes,
+        "container_overhead_excluded": True,
+        "note": "not the size of the file on disk; see the handout, Stage A step 3"
+        }
 
 
 # ===========================================================================
 # 3. The memory nobody puts in the table
 # ===========================================================================
+
+def _elements(shape: tuple[int, ...]) -> int:
+   elements_product = math.prod(shape)
+   return elements_product
+
+# tensors are just the name of a layer
+def _last_use(graph: Graph) -> dict[str, int]:
+    last = {}
+    for i in range(len(graph.layers)):
+        last.setdefault(graph.layers[i].name) # defaults value for layer's name tensor as None
+        last[graph.layers[-1].name] = len(graph) - 1 # keep the final layer’s output alive until the end
+
+        if graph.layers[i].reads: # if layer has reads then include all of that layer's tensors in last
+            for tensor in graph.layers[i].reads:
+                last[tensor] = i
+        else: # if layer DOESNT have reads tensor then only include name tensor in last
+            if i == 0:
+                last["__input__"] = 0
+            if i > 0:
+                last[graph.layers[i-1].name] = i
+
+    return last
+        
+def _peak_elements(graph: Graph, last_use: dict[str, int]) -> int:
+    live = {"__input__": _elements(graph.input_shape)}
+    peak_elements = 0
+
+    for i in range(len(graph.layers)):
+        live[graph.layers[i].name] = graph.layers[i].out_elements
+        print(peak_elements)
+        peak_elements = max(peak_elements, sum(live.values()))
+        print(live.values())
+        # if last_use[graph.layers[i].name] == i: # remove any tensor whose last use index matches i
+        #     # print(f"last_use[graph.layers[i] is {graph.layers[i].name} and {last_use[graph.layers[i].name]}\n")
+        #     live.pop(graph.layers[i].name)
+
+        for tensor in last_use:
+            if last_use[tensor] == i:
+                # print(tensor)
+                live.pop(tensor) # remove ANY tensor whose last use index matches i
+
+        
+        # print(live)
+
+    # print(live)
+    return int(peak_elements)
+
 
 def count_activations(graph: Graph) -> dict[str, Any]:
     """Total and peak activation footprint, in elements and in bytes.
@@ -184,7 +265,49 @@ def count_activations(graph: Graph) -> dict[str, Any]:
     what a memory budget is denominated in, with elements and the layer where
     the peak occurs alongside.
     """
-    pass
+    # pass
+
+    last_use = _last_use(graph)
+    peak_elements = _peak_elements(graph, last_use)
+
+    live = {"__input__": _elements(graph.input_shape) * dtype_bytes(graph.precision)}
+
+    total_elements = 0
+    total_bytes = 0
+    peak_bytes = 0
+
+    for i in range(len(graph.layers)):
+        output_bytes = graph.layers[i].out_elements * dtype_bytes(graph.layers[i].act_dtype)
+        # print(f"output_bytes {i}: output_bytes")
+        live[graph.layers[i].name] = output_bytes
+
+        total_elements = total_elements + graph.layers[i].out_elements
+        total_bytes = float(total_bytes + output_bytes)
+
+        curr_resident_memory = sum(live.values())
+        # print(curr_resident_memory)
+        if curr_resident_memory > peak_bytes:
+            peak_bytes = curr_resident_memory
+            peak_at = graph.layers[i].name
+
+        for tensor in last_use:
+            if last_use[tensor] == i:
+                # print(tensor)
+                live.pop(tensor)
+
+    # print(f"\nfunc live is {live}")
+
+    return {
+        "value": peak_bytes,
+        "source": f"{graph.name}: liveness over {len(graph)} layers, input included",
+        "status": "computed",
+        "peak_at": peak_at,
+        "peak_elements": peak_elements,
+        "total_elements": total_elements,
+        "total_bytes": total_bytes,
+        "includes_network_input": True,
+        "note": "peak is the resident set, not the largest single tensor"
+        }
 
 # ===========================================================================
 # 4. The factor of two that halves everybody's numbers
@@ -212,4 +335,37 @@ def to_flops(macs: dict[str, Any], convention: str = "mac_is_two_flops") -> dict
     An unrecognised convention is `unknown`, not a default. The caller asked
     for something this function does not know how to do.
     """
-    pass
+    # pass
+
+    if not is_answered(macs):
+        return unknown("input macs", "no valid MAC count was provided")
+
+    if convention not in FLOP_CONVENTIONS:
+        return unknown("input convention", f"unrecognized convention, {convention}, is not in {FLOP_CONVENTIONS}")
+
+    value = macs["value"]
+    source = macs["source"]
+
+    mult_factor = FLOP_CONVENTIONS[convention]
+    total_mac_count = value
+    total_flops = total_mac_count * mult_factor
+
+
+    if "per_layer" in macs:
+        per_layer = {}
+        for layer in macs["per_layer"]:
+            per_layer[layer] = macs["per_layer"][layer] * mult_factor
+
+    return {
+        "value": total_flops,
+        "source": source,
+        "status": "computed",
+        "convention": convention,
+        "flops_per_mac": mult_factor,
+        "per_layer": per_layer,
+        "note": "a count of operations contains no unit of time"
+    }
+
+
+
+        
