@@ -82,7 +82,6 @@ def _layer_parameters(ly: Layer) -> int:
         return 0
 
 def count_parameters(graph: Graph) -> dict[str, Any]:
-    # pass
     per_layer = {}
     
     for ly in graph.layers:
@@ -129,7 +128,6 @@ def model_size_bytes(graph: Graph) -> dict[str, Any]:
     Returns a `computed` finding whose value is bytes, with the per-dtype
     breakdown that makes the first bullet checkable.
     """
-    # pass
 
     per_dtype = {} # mapping datatype names to byte counts
     per_layer = {} # mapping layer names to byte counts
@@ -155,7 +153,7 @@ def model_size_bytes(graph: Graph) -> dict[str, Any]:
 
             # **2
             buffer_bytes = buffer_bytes + (buffer_elements * dtype_bytes(BUFFER_DTYPE))
-            # number of buffer byes
+            # number of buffer bytes
 
             # **3
             if BUFFER_DTYPE in per_dtype:
@@ -169,7 +167,6 @@ def model_size_bytes(graph: Graph) -> dict[str, Any]:
         else:
             per_layer[ly.name] = int(param_bytes) # int cast to match sample output
 
-        # print(per_dtype)
 
     total = int(sum(per_layer.values()))
 
@@ -217,22 +214,13 @@ def _peak_elements(graph: Graph, last_use: dict[str, int]) -> int:
 
     for i in range(len(graph.layers)):
         live[graph.layers[i].name] = graph.layers[i].out_elements
-        print(peak_elements)
         peak_elements = max(peak_elements, sum(live.values()))
-        print(live.values())
-        # if last_use[graph.layers[i].name] == i: # remove any tensor whose last use index matches i
-        #     # print(f"last_use[graph.layers[i] is {graph.layers[i].name} and {last_use[graph.layers[i].name]}\n")
-        #     live.pop(graph.layers[i].name)
 
         for tensor in last_use:
             if last_use[tensor] == i:
-                # print(tensor)
                 live.pop(tensor) # remove ANY tensor whose last use index matches i
 
-        
-        # print(live)
 
-    # print(live)
     return int(peak_elements)
 
 
@@ -265,7 +253,6 @@ def count_activations(graph: Graph) -> dict[str, Any]:
     what a memory budget is denominated in, with elements and the layer where
     the peak occurs alongside.
     """
-    # pass
 
     last_use = _last_use(graph)
     peak_elements = _peak_elements(graph, last_use)
@@ -278,24 +265,21 @@ def count_activations(graph: Graph) -> dict[str, Any]:
 
     for i in range(len(graph.layers)):
         output_bytes = graph.layers[i].out_elements * dtype_bytes(graph.layers[i].act_dtype)
-        # print(f"output_bytes {i}: output_bytes")
+
         live[graph.layers[i].name] = output_bytes
 
         total_elements = total_elements + graph.layers[i].out_elements
         total_bytes = float(total_bytes + output_bytes)
 
         curr_resident_memory = sum(live.values())
-        # print(curr_resident_memory)
+       
         if curr_resident_memory > peak_bytes:
             peak_bytes = curr_resident_memory
             peak_at = graph.layers[i].name
 
         for tensor in last_use:
             if last_use[tensor] == i:
-                # print(tensor)
                 live.pop(tensor)
-
-    # print(f"\nfunc live is {live}")
 
     return {
         "value": peak_bytes,
@@ -335,7 +319,6 @@ def to_flops(macs: dict[str, Any], convention: str = "mac_is_two_flops") -> dict
     An unrecognised convention is `unknown`, not a default. The caller asked
     for something this function does not know how to do.
     """
-    # pass
 
     if not is_answered(macs):
         return unknown("input macs", "no valid MAC count was provided")
@@ -365,7 +348,3 @@ def to_flops(macs: dict[str, Any], convention: str = "mac_is_two_flops") -> dict
         "per_layer": per_layer,
         "note": "a count of operations contains no unit of time"
     }
-
-
-
-        
