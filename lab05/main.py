@@ -8,7 +8,7 @@ from typing import Any
 import prune
 from tensors import load_model, total_parameters
 
-import pdb
+# import pdb
 
 
 def generate_all_prune_outputs(
@@ -160,7 +160,7 @@ def generate_all_prune_outputs(
             "helpers": helpers_output,
             "magnitude_mask_and_apply_mask": fine_grained_output,
             "channel_keep_and_drop_channels": structured_output,
-            # "bytes_stored": bytes_stored_output,
+            "bytes_stored": bytes_stored_output,
             # "classify_removal": classify_removal_output,
             # "sparsity_row": sparsity_row_output,
             # "sweep_model": sweep_output,

@@ -10,6 +10,8 @@ from tensors import (
     total_parameters,
 )
 
+import math
+
 # The four meanings of "removed", Lecture 05 slide 8, in staircase order.
 REMOVALS = ("masked", "patterned", "stored sparse", "structurally absent")
 
@@ -193,18 +195,22 @@ def drop_channels(t: Tensor, keep: Sequence[int]) -> Tensor:
         keep = sorted(keep)
 
         new_data = []
-        import pdb
-        pdb.set_trace()
 
-        for c in range(len(keep)):
+        for c in keep:
             (lo, hi) = (c * t.channel_stride, (c + 1) * t.channel_stride)
-            new_data.extend(t.data[lo::hi]) # extend func stops it from being a list of lists if append func was used
+            new_data.extend(t.data[lo:hi]) # extend func stops it from being a list of lists if append func was used
 
+            # import pdb
+            # pdb.set_trace()
+            
         shape_new = [len(keep)]
         shape_new.extend(list(t.shape[1:]))
 
-        new_t = Tensor(t.name, tuple(shape_new), tuple(new_data), t.dtype)
+        # import pdb
+        # pdb.set_trace()
 
+        new_t = Tensor(t.name, tuple(shape_new), tuple(new_data), t.dtype)
+        
         return new_t
 
     else:
@@ -245,7 +251,42 @@ def bytes_stored(tensors: Sequence[Tensor], storage: str = "dense",
     accounting that rounds in its own favour is the thing this lab teaches you
     to distrust.
     """
-    pass
+    # pass
+
+    if storage in STORAGE_FORMS and mask_encoding in {"framework", "bitmap"}:
+
+        cumulative_bytes = 0
+
+        for t in tensors:
+            n = t.parameters
+            db = dtype_bytes(t.dtype)
+
+            # dense:
+            dense_bytes = n * db
+
+            # masked:
+            if mask_encoding == "framework": # mask = "framework"
+                masked_bytes = dense_bytes + dense_bytes
+            else: # mask = "bitmap"
+                masked_bytes = dense_bytes + math.floor((n+7)/8)
+
+            # sparse:
+            nnz = 0 # number of non-zeros in t.data
+            for v in t.data:
+                if v != 0:
+                    nnz = nnz + 1
+            
+            sparse_bytes = (nnz * db) + (nnz * INDEX_BYTES)
+
+            cumulative_bytes = cumulative_bytes + dense_bytes + masked_bytes + sparse_bytes
+
+        # import pdb
+        # pdb.set_trace()
+        
+        return cumulative_bytes
+    
+    else:
+        raise(TensorError)
 
 
 # ---------------------------------------------------------------------------
