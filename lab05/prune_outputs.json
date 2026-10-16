@@ -12174,17 +12174,177 @@
             }
         },
         "bytes_stored": {
-            "original_dense": 234800,
+            "original_dense": 46960,
             "fine_pruned": {
-                "masked_framework": 187840,
-                "masked_bitmap": 142348,
-                "sparse": 187840,
-                "dense": 187840
+                "masked_framework": 93920,
+                "masked_bitmap": 48428,
+                "sparse": 46960,
+                "dense": 46960
             },
             "channel_pruned": {
-                "dense": 117400,
-                "sparse": 117400
+                "dense": 23480,
+                "sparse": 46960
             }
-        }
+        },
+        "classify_removal": {
+            "baseline_unpruned": "dense",
+            "fine_pruned_masked": "masked",
+            "fine_pruned_sparse": "stored sparse",
+            "channel_pruned_dense": "structurally absent"
+        },
+        "sparsity_row": {
+            "fine_row_sample": {
+                "model": "tinyconv",
+                "granularity": "fine",
+                "storage": "masked",
+                "mask_encoding": "framework",
+                "nominal_ratio": 0.5,
+                "values_zeroed": 5870,
+                "zeroed_fraction": 0.5,
+                "parameters_before": 11740,
+                "parameters_after": 11740,
+                "achieved_reduction": 0.0,
+                "bytes_dense": 46960,
+                "bytes_stored": 93920,
+                "removal": "masked"
+            },
+            "channel_row_sample": {
+                "model": "tinyconv",
+                "granularity": "channel",
+                "storage": "dense",
+                "mask_encoding": null,
+                "nominal_ratio": 0.5,
+                "values_zeroed": 0,
+                "zeroed_fraction": 0.0,
+                "parameters_before": 11740,
+                "parameters_after": 5870,
+                "achieved_reduction": 0.5,
+                "bytes_dense": 46960,
+                "bytes_stored": 23480,
+                "removal": "structurally absent"
+            }
+        },
+        "sweep_model": [
+            {
+                "model": "tinyconv",
+                "granularity": "fine",
+                "storage": "masked",
+                "mask_encoding": "framework",
+                "nominal_ratio": 0.0,
+                "values_zeroed": 0,
+                "zeroed_fraction": 0.0,
+                "parameters_before": 11740,
+                "parameters_after": 11740,
+                "achieved_reduction": 0.0,
+                "bytes_dense": 46960,
+                "bytes_stored": 93920,
+                "removal": "dense"
+            },
+            {
+                "model": "tinyconv",
+                "granularity": "fine",
+                "storage": "masked",
+                "mask_encoding": "framework",
+                "nominal_ratio": 0.25,
+                "values_zeroed": 2935,
+                "zeroed_fraction": 0.25,
+                "parameters_before": 11740,
+                "parameters_after": 11740,
+                "achieved_reduction": 0.0,
+                "bytes_dense": 46960,
+                "bytes_stored": 93920,
+                "removal": "masked"
+            },
+            {
+                "model": "tinyconv",
+                "granularity": "fine",
+                "storage": "masked",
+                "mask_encoding": "framework",
+                "nominal_ratio": 0.5,
+                "values_zeroed": 5870,
+                "zeroed_fraction": 0.5,
+                "parameters_before": 11740,
+                "parameters_after": 11740,
+                "achieved_reduction": 0.0,
+                "bytes_dense": 46960,
+                "bytes_stored": 93920,
+                "removal": "masked"
+            },
+            {
+                "model": "tinyconv",
+                "granularity": "fine",
+                "storage": "masked",
+                "mask_encoding": "framework",
+                "nominal_ratio": 0.75,
+                "values_zeroed": 8805,
+                "zeroed_fraction": 0.75,
+                "parameters_before": 11740,
+                "parameters_after": 11740,
+                "achieved_reduction": 0.0,
+                "bytes_dense": 46960,
+                "bytes_stored": 93920,
+                "removal": "masked"
+            },
+            {
+                "model": "tinyconv",
+                "granularity": "channel",
+                "storage": "dense",
+                "mask_encoding": null,
+                "nominal_ratio": 0.0,
+                "values_zeroed": 0,
+                "zeroed_fraction": 0.0,
+                "parameters_before": 11740,
+                "parameters_after": 11740,
+                "achieved_reduction": 0.0,
+                "bytes_dense": 46960,
+                "bytes_stored": 46960,
+                "removal": "dense"
+            },
+            {
+                "model": "tinyconv",
+                "granularity": "channel",
+                "storage": "dense",
+                "mask_encoding": null,
+                "nominal_ratio": 0.25,
+                "values_zeroed": 0,
+                "zeroed_fraction": 0.0,
+                "parameters_before": 11740,
+                "parameters_after": 8785,
+                "achieved_reduction": 0.251704,
+                "bytes_dense": 46960,
+                "bytes_stored": 35140,
+                "removal": "structurally absent"
+            },
+            {
+                "model": "tinyconv",
+                "granularity": "channel",
+                "storage": "dense",
+                "mask_encoding": null,
+                "nominal_ratio": 0.5,
+                "values_zeroed": 0,
+                "zeroed_fraction": 0.0,
+                "parameters_before": 11740,
+                "parameters_after": 5870,
+                "achieved_reduction": 0.5,
+                "bytes_dense": 46960,
+                "bytes_stored": 23480,
+                "removal": "structurally absent"
+            },
+            {
+                "model": "tinyconv",
+                "granularity": "channel",
+                "storage": "dense",
+                "mask_encoding": null,
+                "nominal_ratio": 0.75,
+                "values_zeroed": 0,
+                "zeroed_fraction": 0.0,
+                "parameters_before": 11740,
+                "parameters_after": 2915,
+                "achieved_reduction": 0.751704,
+                "bytes_dense": 46960,
+                "bytes_stored": 11660,
+                "removal": "structurally absent"
+            }
+        ]
     }
 }

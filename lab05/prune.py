@@ -86,8 +86,6 @@ def magnitude_mask(t: Tensor, ratio: float) -> tuple[int, ...]:
     the whole model.
     """
 
-    # pass
-
     n = len(t.data)
 
     removal_count = _drop_count(n, ratio) # removal count
@@ -120,7 +118,6 @@ def channel_keep(t: Tensor, ratio: float, p: float = 2.0) -> tuple[int, ...]:
     achieved reduction, so a 90% request on a 4-channel tensor shows up in
     `sparsity.json` as an achieved 75% and the gap is visible.
     """
-    # pass
 
     scores = _group_scores(t, p)
     removal_count = _drop_count(t.channels, ratio)
@@ -149,7 +146,6 @@ def apply_mask(t: Tensor, mask: Sequence[int]) -> Tensor:
     and multiplied by any dense kernel exactly as before. Nothing here is a
     saving; it is a set of values that happen to be zero.
     """
-    # pass
 
     if len(mask) != len(t.data):
         raise(TensorError)
@@ -163,10 +159,6 @@ def apply_mask(t: Tensor, mask: Sequence[int]) -> Tensor:
             v_new.append(0.0)
 
     new_t = Tensor(t.name, t.shape, tuple(v_new), t.dtype)
-    # new_t.name = t.name
-    # new_t.shape = t.shape
-    # new_t.dtype = t.dtype
-    # new_t.data = tuple(v_new)
 
     return new_t
     
@@ -189,9 +181,8 @@ def drop_channels(t: Tensor, keep: Sequence[int]) -> Tensor:
     by tensor and accounts for it that way, which is honest as long as
     `sparsity.json` does not claim the model still runs — and it does not.
     """
-    # pass
 
-    if keep and len(keep) == len(set(keep)) and len(keep) < t.channels:
+    if keep and len(keep) == len(set(keep)) and len(keep) <= t.channels:
         keep = sorted(keep)
 
         new_data = []
@@ -199,15 +190,9 @@ def drop_channels(t: Tensor, keep: Sequence[int]) -> Tensor:
         for c in keep:
             (lo, hi) = (c * t.channel_stride, (c + 1) * t.channel_stride)
             new_data.extend(t.data[lo:hi]) # extend func stops it from being a list of lists if append func was used
-
-            # import pdb
-            # pdb.set_trace()
             
         shape_new = [len(keep)]
         shape_new.extend(list(t.shape[1:]))
-
-        # import pdb
-        # pdb.set_trace()
 
         new_t = Tensor(t.name, tuple(shape_new), tuple(new_data), t.dtype)
         
@@ -251,39 +236,43 @@ def bytes_stored(tensors: Sequence[Tensor], storage: str = "dense",
     accounting that rounds in its own favour is the thing this lab teaches you
     to distrust.
     """
-    # pass
-
+  
     if storage in STORAGE_FORMS and mask_encoding in {"framework", "bitmap"}:
+        
+        cumulative_bytes = []
 
-        cumulative_bytes = 0
-
+        
         for t in tensors:
             n = t.parameters
             db = dtype_bytes(t.dtype)
 
+            dense_bytes = 0
+            masked_bytes = 0
+            sparse_bytes = 0
+
             # dense:
-            dense_bytes = n * db
+            if storage == "dense":
+                dense_bytes = n * db
 
             # masked:
-            if mask_encoding == "framework": # mask = "framework"
-                masked_bytes = dense_bytes + dense_bytes
-            else: # mask = "bitmap"
-                masked_bytes = dense_bytes + math.floor((n+7)/8)
+            if storage == "masked":
+                if mask_encoding == "framework": # mask = "framework"
+                    masked_bytes = (n * db) + (n * db)
+                else: # mask = "bitmap"
+                    masked_bytes = (n * db) + math.floor((n+7)/8)
 
             # sparse:
-            nnz = 0 # number of non-zeros in t.data
-            for v in t.data:
-                if v != 0:
-                    nnz = nnz + 1
-            
-            sparse_bytes = (nnz * db) + (nnz * INDEX_BYTES)
+            if storage == "sparse":
+                nnz = 0 # number of non-zeros in t.data
+                for v in t.data:
+                    if v != 0.0:
+                        nnz = nnz + 1
+                
+                sparse_bytes = (nnz * db) + (nnz * INDEX_BYTES)
 
-            cumulative_bytes = cumulative_bytes + dense_bytes + masked_bytes + sparse_bytes
-
-        # import pdb
-        # pdb.set_trace()
+            cumulative_bytes.append(dense_bytes + masked_bytes + sparse_bytes)
         
-        return cumulative_bytes
+        return sum(cumulative_bytes)
     
     else:
         raise(TensorError)
@@ -317,8 +306,55 @@ def sparsity_row(model: str, ratio: float, granularity: str,
     says why: on a nominal axis the two granularities are not comparable, and
     the comparison is the lab.
     """
-    pass
-    # in 6 or 8 include nested loop like: for each gran, for each ratio, for each tensor
+    
+    if granularity in {"fine", "channel"}:
+
+        # Step 2
+        p_before = total_parameters(before)
+        p_after = total_parameters(after)
+
+        nnz = 0 # number of non-zeros in t.data
+        for t in after:
+            for v in t.data:
+                if v != 0.0:
+                    nnz = nnz + 1
+
+        zeroed = p_after - nnz
+
+        # Step 3
+        zeroed_fraction = zeroed/p_before
+        achieved_fraction = 1.0 - (p_after/p_before)
+
+        # Step 4
+        dense_bytes = 0 # uses before
+        for t in before:
+            # if storage == "dense":
+            n = t.parameters
+            db = dtype_bytes(t.dtype)  
+            dense_bytes = dense_bytes + (n * db)
+
+        bytes_stored_var = bytes_stored(after, storage, mask_encoding) # uses after
+
+        classify_removal_var = classify_removal(before, after, storage)
+
+        return {
+            "model": model,
+            "granularity": granularity,
+            "storage": storage,
+            "mask_encoding": mask_encoding if storage == "masked" else None,
+            "nominal_ratio": ratio,
+            "values_zeroed": zeroed,
+            "zeroed_fraction": zeroed_fraction,
+            "parameters_before": p_before,
+            "parameters_after": p_after,
+            "achieved_reduction": round(achieved_fraction, 6),
+            "bytes_dense": dense_bytes,
+            "bytes_stored": bytes_stored_var,
+            "removal": classify_removal_var
+            }
+    else:
+        raise(TensorError)
+
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +387,39 @@ def classify_removal(before: Sequence[Tensor], after: Sequence[Tensor],
     will say so. It is reporting a property of the values, not a claim that
     anybody pruned with a 2:4 constraint in mind.
     """
-    pass
+
+    # Step 1
+    for i in range(len(before)):
+        if before[i].shape != after[i].shape:
+             return "structurally absent"
+    
+    # Step 2
+    if storage == "sparse":
+        return "stored sparse"
+
+    # N = 2, M = 4
+    any_zero = False
+    for t in after:
+        n = len(t.data)
+        for v in t.data:
+            if v == 0.0:
+                any_zero = True
+                break
+        if n % NM_M: # runs if non-zero, so the tensor cant be evenly partitioned into 4-element vector
+            patterned = False
+            continue
+        for start in range(0, n, NM_M):
+            nz = sum(1 for v in t . data [ start : start + NM_M ] if v != 0.0)
+            if nz > NM_N:
+                patterned = False
+                break
+
+    if not any_zero:
+        return "dense"
+    if patterned:
+        return "patterned" 
+    else:
+        return "masked"
 
 
 # ---------------------------------------------------------------------------
@@ -379,4 +447,36 @@ def sweep_model(model: dict[str, Any], ratios: Sequence[float],
     the baseline every other row is a ratio against, and a sweep without it
     has four numbers and no result.
     """
-    pass
+    # import pdb
+    # pdb.set_trace()
+
+    results = []
+
+    base_tensors = model["tensors"]
+
+    for g in granularities: # 2 granularities
+        format_form = storage or GRANULARITY_STORAGE[g]
+
+        for r in sorted(ratios): # 4 ratios
+            if g == "fine":
+                fine_after = []
+                for t in base_tensors:
+                    mask = magnitude_mask(t, r)
+                    apply = apply_mask(t, mask)
+                    fine_after.append(apply)
+
+                s_r = sparsity_row(model["name"], r, g, base_tensors, fine_after, format_form, mask_encoding)
+                results.append(s_r)
+
+            elif g == "channel":
+                sliced_after = []
+                for t in base_tensors: 
+                    kept_channels = channel_keep(t, r, p)
+                    sliced = drop_channels(t, kept_channels)
+                    sliced_after.append(sliced)
+
+                s_r = sparsity_row(model["name"], r, g, base_tensors, sliced_after, format_form, mask_encoding)
+                results.append(s_r)
+
+    return results # list of 8 dictionaries
+
