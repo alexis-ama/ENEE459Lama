@@ -10,6 +10,8 @@ import json
 import numpy as np
 from pathlib import Path
 
+import math
+
 class FrameError(ValueError):
     """A shape or a format this module cannot price. `capture.py` exits 3."""
 
@@ -114,15 +116,69 @@ def grab_frame(pipeline: str, warmup_frames: int = 15) -> np.ndarray:
 ############################
 
 def frame_bytes(width: int, height: int, fmt: str) -> int:
-    pass
+    # pass
+    if not(width > 0 and height > 0):
+        raise(FrameError)
+    elif not fmt.lower():
+        raise(FrameError)
+    else:
+        total = width * height * _bytes_per_pixel(fmt)
+        bytes_var = math.ceil(total)
+
+        return bytes_var
 
 
 def bytes_per_second(width: int, height: int, fmt: str, fps: float) -> float:
-    pass
+    # pass
+    if not (fps > 0):
+        raise(FrameError)
+    else:
+        single_frame_bs = frame_bytes(width, height, fmt)
+        bandwith = single_frame_bs * fps
+
+        return bandwith
 
 
 def frame_stats(pixels: Sequence[float] | Iterable[float]) -> dict[str, float]:
-    pass
+    # pass
+    values = []
+    values.extend(pixels)
+    # print(values)
+
+    # import pdb; pdb.set_trace()
+
+    if not values:
+        raise(FrameError)
+    else:
+        min_values = min(values)
+        max_values = max(values)
+
+        N = len(values)
+
+        mean_values = sum(values)/N
+
+        variance_squares = []
+
+        for i in range(N):
+            square_v = values[i] - mean_values
+            variance_squares.append(square_v * square_v)
+
+        variance_values = sum(variance_squares)/N
+
+        stddv_values = math.sqrt(variance_values)
+        spread = max_values - min_values
+
+        # print(sorted(values[1]))
+        
+        return {
+            "min": min_values,
+            "max": max_values,
+            "mean": mean_values,
+            "spread": spread,
+            "sd": stddv_values,
+            "samples": N
+        }
+            
 
 
 def classify(stats: dict[str, float]) -> tuple[str, str]:
@@ -163,11 +219,12 @@ def main(
     json_path = out_path / json_filename
 
     # 1. Capture frame from hardware
-    pipeline_str = gstreamer_pipeline()
-    frame_bgr = grab_frame(pipeline_str)
+    # pipeline_str = gstreamer_pipeline()
+    # frame_bgr = grab_frame(pipeline_str)
 
-    # 2. Save captured image to disk
-    cv2.imwrite(str(img_path), frame_bgr)
+    # # 2. Save captured image to disk
+    # cv2.imwrite(str(img_path), frame_bgr)
+    frame_bgr = cv2.imread("test_photo.jpg") # commented out 218-222 and added the code in 223 so I can work on lab7 at home
     height, width, _ = frame_bgr.shape
 
     # 3. Extract normalized luma/grayscale values in [0.0, 1.0] for classification
@@ -177,51 +234,52 @@ def main(
 
     # 4. Compute statistics and scene category
     stats = frame_stats(normalized_luma)
-    classification, reason = classify(stats)
+    print(stats) # added this line too
+    # classification, reason = classify(stats) # commented lines 234 to 278 and added line 233
 
-    # 5. Calculate memory bus bandwidth and conversion costs
-    formats_table = summarise_formats(width, height)
-    bgr_bandwidth_bps = bytes_per_second(width, height, "bgr", target_fps)
-    nv12_to_bgr_cost = conversion_bytes(width, height, "nv12", "bgr")
-    norm_cost = normalise_bytes(width, height, channels=3, out_bytes=4)
+    # # 5. Calculate memory bus bandwidth and conversion costs
+    # formats_table = summarise_formats(width, height)
+    # bgr_bandwidth_bps = bytes_per_second(width, height, "bgr", target_fps)
+    # nv12_to_bgr_cost = conversion_bytes(width, height, "nv12", "bgr")
+    # norm_cost = normalise_bytes(width, height, channels=3, out_bytes=4)
 
-    # Downsampling budget example (1080p -> 224x224 input tensor)
-    resize_cost = resize_bytes(width, height, 224, 224, "rgb")
+    # # Downsampling budget example (1080p -> 224x224 input tensor)
+    # resize_cost = resize_bytes(width, height, 224, 224, "rgb")
 
-    # 6. Aggregate payload and write JSON
-    payload: dict[str, Any] = {
-        "capture_metadata": {
-            "saved_image_path": str(img_path.resolve()),
-            "width": width,
-            "height": height,
-            "channels": 3,
-            "assumed_fps": target_fps,
-        },
-        "frame_analysis": {
-            "classification": classification,
-            "classification_reason": reason,
-            "stats": stats,
-        },
-        "memory_pricing": {
-            "bandwidth_bytes_per_sec": {
-                "bgr_live_stream": bgr_bandwidth_bps,
-                "nv12_live_stream": bytes_per_second(width, height, "nv12", target_fps),
-            },
-            "format_comparison": formats_table,
-            "pipeline_stage_costs": {
-                "nv12_to_bgr_conversion_bytes": nv12_to_bgr_cost,
-                "resize_to_224x224_rgb_bytes": resize_cost,
-                "fp32_normalization_tensor_bytes": norm_cost,
-            },
-        },
-    }
+    # # 6. Aggregate payload and write JSON
+    # payload: dict[str, Any] = {
+    #     "capture_metadata": {
+    #         "saved_image_path": str(img_path.resolve()),
+    #         "width": width,
+    #         "height": height,
+    #         "channels": 3,
+    #         "assumed_fps": target_fps,
+    #     },
+    #     "frame_analysis": {
+    #         "classification": classification,
+    #         "classification_reason": reason,
+    #         "stats": stats,
+    #     },
+    #     "memory_pricing": {
+    #         "bandwidth_bytes_per_sec": {
+    #             "bgr_live_stream": bgr_bandwidth_bps,
+    #             "nv12_live_stream": bytes_per_second(width, height, "nv12", target_fps),
+    #         },
+    #         "format_comparison": formats_table,
+    #         "pipeline_stage_costs": {
+    #             "nv12_to_bgr_conversion_bytes": nv12_to_bgr_cost,
+    #             "resize_to_224x224_rgb_bytes": resize_cost,
+    #             "fp32_normalization_tensor_bytes": norm_cost,
+    #         },
+    #     },
+    # }
 
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=4)
+    # with open(json_path, "w", encoding="utf-8") as f:
+    #     json.dump(payload, f, indent=4)
 
-    print(f"Captured frame saved to : {img_path}")
-    print(f"Analysis saved to       : {json_path}")
-    print(f"Classification result   : {classification.upper()} ({reason})")
+    # print(f"Captured frame saved to : {img_path}")
+    # print(f"Analysis saved to       : {json_path}")
+    # print(f"Classification result   : {classification.upper()} ({reason})")
 
 if __name__ == "__main__":
     main()
