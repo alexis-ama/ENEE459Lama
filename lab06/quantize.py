@@ -156,10 +156,10 @@ def quantize_tensor(t: Tensor, bits: int = DEFAULT_BITS,
             shape = tuple(t.shape), 
             codes = tuple(codes),
             scales = tuple(scales),
-            zeros = tuple ( zeros ), 
-            bits = int ( bits ),
+            zeros = tuple (zeros), 
+            bits = int (bits),
             granularity = granularity, 
-            symmetric = bool ( symmetric ), 
+            symmetric = bool (symmetric), 
             clipped = clipped,
         )
 
@@ -255,12 +255,95 @@ def precision_row(model_name: str, config: Mapping[str, Any],
     # pass
     if "label" not in config or not config["label"]:
         raise(TensorError)
-    else
+    else:
+        label = config["label"]
+        precision = config["precision"]
+        granularity = config["granularity"]
+        symmetric = config["symmetric"]
+        clip = config["clip"]
+        percentile = config["percentile"]
+        calibration = calibration_values # config["calibration"]
+        
+        if precision == "int8":
+            qs = [quantize_tensor(t, DEFAULT_BITS, granularity, symmetric, clip, percentile) for t in tensors]
+            after = [dequantize(q) for q in qs]
+            scale_count = sum(q.scale_count for q in qs)
+        elif precision == "fp16":
+            after = [to_fp16(t) for t in tensors]
+            scale_count = 0
+        else: # fp32
+            after = list(tensors)
+            scale_count = 0
+
+        acts = as_tensor("activations", all_values)
+
+        if precision == "int8":
+            rlo, rhi = _range_of(calibration_values, clip, percentile, DEFAULT_BITS)
+            qa = quantize_tensor(acts, DEFAULT_BITS, "per_tensor", False, clip, percentile, given_range = (rlo, rhi))
+            act_after = dequantize(qa)
+            clipped = qa.clipped_fraction
+        else:
+            rlo, rhi = min(acts.data), max(acts.data)
+            clipped = 0.0
+            if precision == "fp16":
+                act_after = to_fp16(acts)
+
+
+        return {
+            "model" : str(model_name),
+            "label" : label,
+            "precision" : precision,
+            "granularity" : granularity if precision == "int8" else "n/a",
+            "symmetric" : symmetric if precision == "int8" else None,
+            "calibration" : calibration if precision == "int8" else "not calibrated",
+            "clip" : clip if precision == "int8" else "n/a",
+            "parameters" : total_parameters(tensors),
+            "weight_error" : quantization_error(tensors, after)["relative"],
+            "activation_error" : quantization_error ([acts], [act_after])["relative"],
+            "clipped_fraction" : clipped,
+            "activation_range" : [round (float (rlo), 8), round (float (rhi), 8)],
+            "scale_count" : scale_count,
+            "bytes_stored" : bytes_stored (tensors, precision, granularity),
+            "effective_bits" : effective_bits (tensors, precision,
+            granularity),
+        }
 
 
 def pareto_front(points: Sequence[Mapping[str, Any]],
                  objectives: Mapping[str, float]) -> tuple[int, ...]:
-    pass
+    # pass
+
+    pts = list(points)
+
+    if not pts or not objectives:
+        raise(TensorError)
+
+    front: list[int] = []
+
+    for i, a in enumerate(pts):
+        beaten = False
+
+        for j, b in enumerate(pts):
+            if i == j:
+                continue
+            else:
+                better = False
+                worse = False
+                for name, sense in objectives.items():
+                    d = (float(b[name]) - float(a[name])) * float(sense)
+                    if d > 0.0:
+                        better = True
+                    elif d < 0.0:
+                        worse = True
+
+                    if better and not worse:
+                        beaten = True
+                        break
+
+        if not beaten:
+            front.append(i)
+
+    return tuple(front)
 
 
 if __name__ == "__main__":
