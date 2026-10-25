@@ -118,35 +118,144 @@ def quantize_tensor(t: Tensor, bits: int = DEFAULT_BITS,
                     clip: str = "minmax",
                     percentile: float = DEFAULT_PERCENTILE,
                     given_range: tuple[float, float] | None = None) -> Quantized:
-    pass
+    # pass
+
+    if not (granularity in GRANULARITIES and clip in CLIP_METHODS):
+        raise(TensorError)
+    else:
+        qmin, qmax = _qmin_qmax(bits, symmetric)
+
+        if granularity == "per_channel":
+            groups = [_channel_slice(t, c) for c in range(t.channels)]
+        elif granularity == "per_tensor":
+            groups = [(0, len(t.data))]
+
+        codes = [0] * len(t.data)
+        scales: list[float] = []
+        zeros: list[int] = []
+        clipped = 0
+
+        for lo, hi in groups:
+            if given_range:
+                rlo, rhi = float(given_range[0]), float(given_range[1])
+            else:
+                rlo, rhi = _range_of(t.data[lo:hi], clip, percentile, bits)
+
+            s, z = _scale_zero(rlo, rhi, bits, symmetric)
+            scales.append(s)
+            zeros.append(z)
+
+            for i in range(lo, hi):
+                q = _round_half_up(t.data[i] / s) + z
+                if q < qmin or q > qmax:
+                    clipped += 1
+                codes[i] = max(qmin, min(qmax, q))
+
+        return Quantized(
+            name = t.name, 
+            shape = tuple(t.shape), 
+            codes = tuple(codes),
+            scales = tuple(scales),
+            zeros = tuple ( zeros ), 
+            bits = int ( bits ),
+            granularity = granularity, 
+            symmetric = bool ( symmetric ), 
+            clipped = clipped,
+        )
 
 
 def dequantize(qt: Quantized) -> Tensor:
-    pass
+    # pass
+    stride = qt.channel_stride if qt.granularity == "per_channel" else len(qt.codes)
+
+    if stride <= 0:
+        raise(TensorError)
+    else:
+        out = []
+
+        for i, q in enumerate(qt.codes):
+            g = i // stride
+            if g >= len(qt.scales):
+                raise(TensorError)
+            else:
+                out.append(round(qt.scales[g] * (int(q) - qt.zeros[g]), 8))
+
+        return Tensor(name = qt.name, shape = qt.shape, data = tuple(out), dtype = "fp32")
 
 
 
 def quantization_error(before: Sequence[Tensor],
                        after: Sequence[Tensor]) -> dict[str, float]:
-    pass
+    # pass
 
+    b = list(before)
+    a = list(after)
+
+    if len(b) != len(a):
+        raise(TensorError)
+    else:
+        num = 0.0
+        den = 0.0
+        worst = 0.0
+
+        for x, y in zip(b, a):
+            if len(x.data) != len(y.data):
+                raise(TensorError)
+
+            for u, v in zip(x.data, y.data):
+                d = u - v
+                num += d * d
+                den += u * u
+                worst = max(worst, abs(d))
+
+        frob = math.sqrt(num)
+
+        return {
+            "frobenius": round(frob, 8),
+            "relative": round(frob / math.sqrt(den), 8) if den > 0.0 else 0.0,
+            "max_abs": round(worst, 8),
+        }
 
 
 def bytes_stored(tensors: Sequence[Tensor], precision: str = "fp32",
                  granularity: str = "per_tensor") -> int:
-    pass
+    # pass
+
+    if not(precision in PRECISIONS and granularity in GRANULARITIES):
+        raise(TensorError)
+    else:
+        per = dtype_bytes(precision)
+        total = 0.0
+
+        for t in tensors:
+            total += t.parameters * per
+            if precision == "int8":
+                groups = t.channels if granularity == "per_channel" else 1
+                total += groups * (SCALE_BYTES + ZERO_BYTES)
+
+        return int(total)
+
 
 
 def effective_bits(tensors: Sequence[Tensor], precision: str = "fp32",
                    granularity: str = "per_tensor") -> float:
-    pass
+    # pass
+
+    n = total_parameters(tensors)
+    if n <= 0:
+        raise(TensorError)
+    else:
+        return round(bytes_stored(tensors, precision, granularity) * 8.0/n, 4)
 
 
 def precision_row(model_name: str, config: Mapping[str, Any],
                   tensors: Sequence[Tensor],
                   calibration_values: Sequence[float],
                   all_values: Sequence[float]) -> dict[str, Any]:
-    pass
+    # pass
+    if "label" not in config or not config["label"]:
+        raise(TensorError)
+    else
 
 
 def pareto_front(points: Sequence[Mapping[str, Any]],
