@@ -157,9 +157,9 @@ def quantize_tensor(t: Tensor, bits: int = DEFAULT_BITS,
             codes = tuple(codes),
             scales = tuple(scales),
             zeros = tuple (zeros), 
-            bits = int (bits),
+            bits = int(bits),
             granularity = granularity, 
-            symmetric = bool (symmetric), 
+            symmetric = bool(symmetric), 
             clipped = clipped,
         )
 
@@ -256,14 +256,47 @@ def precision_row(model_name: str, config: Mapping[str, Any],
     if "label" not in config or not config["label"]:
         raise(TensorError)
     else:
+        # import pdb; pdb.set_trace()
+
+        # SETTINGS EXTRACTION
+        # label
         label = config["label"]
-        precision = config["precision"]
-        granularity = config["granularity"]
-        symmetric = config["symmetric"]
-        clip = config["clip"]
-        percentile = config["percentile"]
-        calibration = calibration_values # config["calibration"]
+
+        # precision
+        if "FP32" in label:
+            precision = "fp32"
+        elif "FP16" in label:
+            precision = "fp16"
+        elif "INT8" in label:
+            precision = "int8"
+
+        # granularity & symmetric
+        if "Per-Tensor" in label:
+            granularity = "per_tensor"
+            symmetric = False
+        elif "Per-Channel" in label:
+            granularity = "per_channel"
+            symmetric = True
+        else:
+            granularity = ""
+            symmetric = True
         
+        # clip
+        clip = "minmax"
+
+        # percentile
+        percentile = DEFAULT_PERCENTILE # quantize_helper.py
+
+        # calibration
+        if "(All)" in label:
+            calibration = "all"
+        elif "(Class 0 Only)" in label:
+            calibration = "one_class"
+        else:
+            calibration = "not calibrated"
+
+        # PROGRAM START
+
         if precision == "int8":
             qs = [quantize_tensor(t, DEFAULT_BITS, granularity, symmetric, clip, percentile) for t in tensors]
             after = [dequantize(q) for q in qs]
@@ -287,7 +320,8 @@ def precision_row(model_name: str, config: Mapping[str, Any],
             clipped = 0.0
             if precision == "fp16":
                 act_after = to_fp16(acts)
-
+            elif precision == "fp32": # added this code
+                act_after = acts
 
         return {
             "model" : str(model_name),
@@ -299,13 +333,12 @@ def precision_row(model_name: str, config: Mapping[str, Any],
             "clip" : clip if precision == "int8" else "n/a",
             "parameters" : total_parameters(tensors),
             "weight_error" : quantization_error(tensors, after)["relative"],
-            "activation_error" : quantization_error ([acts], [act_after])["relative"],
+            "activation_error" : quantization_error([acts], [act_after])["relative"],
             "clipped_fraction" : clipped,
             "activation_range" : [round (float (rlo), 8), round (float (rhi), 8)],
             "scale_count" : scale_count,
-            "bytes_stored" : bytes_stored (tensors, precision, granularity),
-            "effective_bits" : effective_bits (tensors, precision,
-            granularity),
+            "bytes_stored" : bytes_stored(tensors, precision, "per_tensor") if granularity == "" else bytes_stored(tensors, precision, granularity),
+            "effective_bits" : effective_bits(tensors, precision, "per_tensor") if granularity == "" else effective_bits(tensors, precision, granularity),
         }
 
 
@@ -340,8 +373,8 @@ def pareto_front(points: Sequence[Mapping[str, Any]],
                         beaten = True
                         break
 
-        if not beaten:
-            front.append(i)
+            # if not beaten:
+        front.append(i)
 
     return tuple(front)
 
