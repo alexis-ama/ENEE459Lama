@@ -182,25 +182,87 @@ def frame_stats(pixels: Sequence[float] | Iterable[float]) -> dict[str, float]:
 
 
 def classify(stats: dict[str, float]) -> tuple[str, str]:
-    pass
+    # pass
+    if not("max" in stats and "spread" in stats and "mean" in stats):
+        raise(FrameError)
+    else:
+        s_max = stats["max"]
+        s_spread = stats["spread"]
+        s_mean = stats["mean"]
+
+        if s_max <= BLACK_MAX:
+            return ("black", "max <= BLACK_MAX")
+        elif s_spread < FLAT_SPREAD:
+           return("flat", "pread < FLAT_SPREAD")
+        elif s_mean < 0.10:
+            return ("dark", "mean < 0.10")
+        else:
+            return ("scene", "nominal")
 
 
 def conversion_bytes(width: int, height: int, src: str, dst: str) -> int:
-    pass
+    # pass
+    if src.lower() == dst.lower():
+        return 0
+    else:
+        read_vol = frame_bytes(width, height, src)
+        write_vol = frame_bytes(width, height, dst)
+
+        traffic = read_vol + write_vol
+
+        return traffic
 
 
 def resize_bytes(src_w: int, src_h: int, dst_w: int, dst_h: int,
                  fmt: str) -> int:
-    pass
+    # pass
+    source_frame = frame_bytes(src_w, src_h, fmt)
+    destination_frame = frame_bytes(dst_w, dst_h, fmt)
+
+    buffer_sum = source_frame + destination_frame
+
+    return buffer_sum
 
 
 def normalise_bytes(width: int, height: int, channels: int = 3,
                     out_bytes: int = 4) -> int:
-    pass
+    # pass
+    if not(width > 0 and height > 0 and channels > 0):
+        raise(FrameError)
+    else:
+        p = width * height * channels
+
+        bytes_input = p * 1
+
+        bytes_output = p * out_bytes
+
+        bytes_sum = bytes_input + bytes_output
+
+        return bytes_sum
 
 
 def summarise_formats(width: int, height: int) -> list[dict[str, Any]]:
-    pass
+    # pass
+
+    base = frame_bytes(width, height, "rgb")
+
+    row_lst = []
+
+    for fmt in FORMATS:
+        n = frame_bytes(width, height, fmt)
+        bpp = _bytes_per_pixel(fmt)
+        ratio = n/base
+        note_string = FORMAT_NOTES[fmt]
+
+        fmt_dict = {"format": fmt,
+            "bytes_per_pixel": bpp,
+            "bytes": n,
+            "relative_to_rgb": ratio,
+            "note": note_string}
+        
+        row_lst.append(fmt_dict)
+    return row_lst
+
 
 
 ###############################
@@ -218,7 +280,7 @@ def main(
     img_path = out_path / image_filename
     json_path = out_path / json_filename
 
-    # 1. Capture frame from hardware
+    # # 1. Capture frame from hardware
     # pipeline_str = gstreamer_pipeline()
     # frame_bgr = grab_frame(pipeline_str)
 
@@ -235,7 +297,8 @@ def main(
     # 4. Compute statistics and scene category
     stats = frame_stats(normalized_luma)
     print(stats) # added this line too
-    # classification, reason = classify(stats) # commented lines 234 to 278 and added line 233
+    classification, reason = classify(stats) # commented lines 234 to 278 and added line 233
+    # print(classification, reason)
 
     # # 5. Calculate memory bus bandwidth and conversion costs
     # formats_table = summarise_formats(width, height)
