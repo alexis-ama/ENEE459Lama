@@ -18,9 +18,11 @@ available_providers = [p for p in desired_providers if p in ort.get_available_pr
 # face detection
 def hard_nms(box_scores, iou_threshold, top_k=-1, candidate_size=200):
     pass
+    # code detect_faces before hard_nms
 
 def detect_faces(image_path, output_path="output_detected.png", conf_threshold=0.7):
     pass
+    # code detect_faces before hard_nms
 
 # Edge detection
 def non_maximum_suppression(magnitude, angle):
