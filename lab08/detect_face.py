@@ -4,6 +4,8 @@ from PIL import Image, ImageDraw
 import warnings
 from scipy.ndimage import convolve, gaussian_filter
 
+import cv2
+
 MODEL_PATH = "version-RFB-320.onnx"
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -21,10 +23,38 @@ def hard_nms(box_scores, iou_threshold, top_k=-1, candidate_size=200):
     # code detect_faces before hard_nms
 
 def detect_faces(image_path, output_path="output_detected.png", conf_threshold=0.7):
-    pass
+    # pass
     # code detect_faces before hard_nms
+    # img_cv2 = cv2.imread(image_path)
 
-# Edge detection
+    img = Image.open(image_path)
+
+    width, height = img.size
+    channels = len(img.getbands())
+    mode = img.mode
+
+    if mode != "RGB":
+        raise(TypeError)
+
+    dimensions = (320, 240)
+
+    resized_img = img.resize(dimensions)
+    converted_img = resized_img.conert("I")
+
+    pixels = converted_img.astype(np.float32)
+    normalized_img = (pixels - 127.0)/128.0
+    batched_img = normalized_img.unsqueeze(0)
+
+
+
+    
+
+
+
+
+
+
+# Edge detectionjjj
 def non_maximum_suppression(magnitude, angle):
     pass
 
