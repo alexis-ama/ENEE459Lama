@@ -8,6 +8,8 @@ from schema import LATENCY_PERCENTILES, REL_FLOOR
 import json
 from pathlib import Path
 
+import math
+
 ########################################################
 ##########   Helper functions         ##################
 ########################################################
@@ -82,7 +84,26 @@ def _percentile(xs: Sequence[float], q: float) -> float:
 
 
 def latency_report(ms: Iterable[float]) -> dict[str, Any]:
-    pass
+    # pass
+    for x_i in ms:
+        if not (_finite(x_i, f"{x_i}") and x_i > 0):
+            raise(AgreementError)
+   
+    x = list(ms)
+    n = abs(len(x))
+    sum_x = sum(ms)
+    mean = (1/n)*sum_x
+    worst_case = max(x)
+
+    for q in LATENCY_PERCENTILES:
+
+        rank = _percentile(x, q)
+        index = (n-1) * (q/100)
+        lo = math.floor(index)
+        hi = min(lo + 1, n - 1)
+
+        p_q = 
+    
 
 
 def speedup(base_ms: float, other_ms: float) -> dict[str, Any]:
