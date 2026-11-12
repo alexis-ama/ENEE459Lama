@@ -95,28 +95,109 @@ def latency_report(ms: Iterable[float]) -> dict[str, Any]:
     mean = (1/n)*sum_x
     worst_case = max(x)
 
+    p_q = {}
+
     for q in LATENCY_PERCENTILES:
-
         rank = _percentile(x, q)
-        index = (n-1) * (q/100)
-        lo = math.floor(index)
-        hi = min(lo + 1, n - 1)
+        # index = (n-1) * (q/100)
+        # lo = math.floor(index)
+        # hi = min(lo + 1, n - 1)
 
-        p_q = 
+        p_q[q] = rank
+
+    p_50 = p_q[50]
+    p_95 = p_q[95]
+    p_99 = p_q[99]
+
+    jitter = p_95 - p_50
+
+    return {
+        "n": n,
+        "mean": mean,
+        "worst": worst_case,
+        "p50": p_50,
+        "p95": p_95,
+        "p99": p_99,
+        "jitter": jitter
+    }
     
 
-
 def speedup(base_ms: float, other_ms: float) -> dict[str, Any]:
-    pass
+    # pass
+    if not (_finite(base_ms, f"{base_ms}") and base_ms > 0 and _finite(other_ms, f"{other_ms}") and other_ms > 0):
+        raise(AgreementError)
+    else:
+        factor = base_ms/other_ms
+        faster = True if factor > 1.0 else False
+        saved_ms = base_ms - other_ms
+
+        return {
+            "factor": factor,
+            "faster": faster,
+            "saved_ms": saved_ms
+        }
 
 
 def max_abs_dev(a: Sequence[float], b: Sequence[float]) -> dict[str, Any]:
-    pass
+    # pass
+    if len(a) != len(b):
+        raise(AgreementError)
+    else:
+        seq_abs = {}
+        best_i = 0
+        best = abs(a[0] - b[0])
 
+        for i in range(len(a)):
+            if not (_finite(a[i], f"{a[i]}") and _finite(b[i], f"{b[i]}")):
+                raise(AgreementError)
+            else:
+                seq_abs[i] = abs(a[i] - b[i])
+                if seq_abs[i] > best:
+                    best_i = i
+                    best = seq_abs[i]
+            
+        max_abs = max(seq_abs.values())
+
+        return {
+            "max_abs": max_abs,
+            "index": best_i,
+            "a": a[best_i],
+            "b": b[best_i],
+            "n": len(a)
+        }
+            
 
 def max_rel_dev(a: Sequence[float], b: Sequence[float],
                 floor: float = REL_FLOOR) -> dict[str, Any]:
-    pass
+    # pass
+    tau = floor
+    if not (len(a) == len(b) and tau > 0):
+            raise(AgreementError)
+    else:
+        denom = {}
+        floored = 0
+        abs_b_i = {}
+
+        best_i = 0
+        best = abs(b[0])
+
+        for i in range(len(a)):
+            if not (_finite(a[i], f"{a[i]}") and _finite(b[i], f"{b[i]}")):
+                raise(AgreementError)
+            else:
+                abs_b_i[i] = abs(b[i])
+                denom[i] = max(abs_b_i[i], tau)
+
+                if denom[i] > best:
+                    best_i = i
+                    best = denom[i]
+
+                if abs_b_i[i] < tau:
+                    floored += 1
+
+        denom_min = min(abs_b_i.values())
+
+
 
 
 def top1_agreement(rows_a: Sequence[Sequence[float]],
@@ -150,19 +231,19 @@ def main(
     timings_optimized = data["timings_optimized"]
     flat_logits_base = data["flat_logits_base"]
     flat_logits_opt = data["flat_logits_opt"]
-    batched_scores_base = data["batched_scores_base"]
-    batched_scores_opt = data["batched_scores_opt"]
+    # batched_scores_base = data["batched_scores_base"]
+    # batched_scores_opt = data["batched_scores_opt"]
 
-    # 2. Execute metric and report functions
+    # # 2. Execute metric and report functions
     report_base = latency_report(timings_base)
     report_opt = latency_report(timings_optimized)
     perf_speedup = speedup(base_ms=report_base["p50"], other_ms=report_opt["p50"])
 
     abs_dev = max_abs_dev(flat_logits_opt, flat_logits_base)
-    rel_dev = max_rel_dev(flat_logits_opt, flat_logits_base, floor=REL_FLOOR)
+    # rel_dev = max_rel_dev(flat_logits_opt, flat_logits_base, floor=REL_FLOOR)
 
-    agreement = top1_agreement(batched_scores_opt, batched_scores_base)
-    margin = decision_margin(batched_scores_base, tol=abs_dev["max_abs"])
+    # agreement = top1_agreement(batched_scores_opt, batched_scores_base)
+    # margin = decision_margin(batched_scores_base, tol=abs_dev["max_abs"])
 
     # 3. Structure output results
     results: dict[str, Any] = {
@@ -173,30 +254,30 @@ def main(
         },
         "deviations": {
             "max_abs_dev": abs_dev,
-            "max_rel_dev": rel_dev,
-            "summary_sentence": deviation_sentence(abs_dev, rel_dev),
+    #         "max_rel_dev": rel_dev,
+    #         "summary_sentence": deviation_sentence(abs_dev, rel_dev),
         },
-        "agreement": {
-            "top1_agreement": agreement,
-            "decision_margin": margin,
-            "decision_sentence": decision_sentence(margin, tol=abs_dev["max_abs"]),
-        },
+    #     "agreement": {
+    #         "top1_agreement": agreement,
+    #         "decision_margin": margin,
+    #         "decision_sentence": decision_sentence(margin, tol=abs_dev["max_abs"]),
+    #     },
     }
 
     # 4. Save results to JSON
     with out_file.open("w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
 
-    # 5. Print a console summary
-    print(f"Loaded input from: {in_file.resolve()}")
-    print(f"Results saved to:  {out_file.resolve()}\n")
-    print("--- Summary ---")
-    print(results["deviations"]["summary_sentence"])
-    print(results["agreement"]["decision_sentence"])
-    print(
-        f"Speedup (p50): {perf_speedup['factor']:.2f}x "
-        f"({perf_speedup['saved_ms']:.2f} ms saved)"
-    )
+    # # 5. Print a console summary
+    # print(f"Loaded input from: {in_file.resolve()}")
+    # print(f"Results saved to:  {out_file.resolve()}\n")
+    # print("--- Summary ---")
+    # print(results["deviations"]["summary_sentence"])
+    # print(results["agreement"]["decision_sentence"])
+    # print(
+    #     f"Speedup (p50): {perf_speedup['factor']:.2f}x "
+    #     f"({perf_speedup['saved_ms']:.2f} ms saved)"
+    # )
 
 if __name__ == "__main__":
     main()
