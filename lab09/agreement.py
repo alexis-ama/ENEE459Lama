@@ -174,41 +174,103 @@ def max_rel_dev(a: Sequence[float], b: Sequence[float],
     if not (len(a) == len(b) and tau > 0):
             raise(AgreementError)
     else:
-        denom = {}
         floored = 0
         abs_b_i = {}
 
         best_i = 0
         best = abs(b[0])
+        denom_min = abs(b[0])
 
         for i in range(len(a)):
             if not (_finite(a[i], f"{a[i]}") and _finite(b[i], f"{b[i]}")):
                 raise(AgreementError)
             else:
                 abs_b_i[i] = abs(b[i])
-                denom[i] = max(abs_b_i[i], tau)
 
-                if denom[i] > best:
-                    best_i = i
-                    best = denom[i]
+                denom_min = min(denom_min, abs_b_i[i])
 
                 if abs_b_i[i] < tau:
                     floored += 1
 
-        denom_min = min(abs_b_i.values())
+                r_i = abs(a[i] - b[i])/max(abs_b_i[i], tau)
 
+                if r_i > best:
+                    best = r_i
+                    best_i = i
 
+        return {
+            "max_rel": best,
+            "index": best_i,
+            "floored": floored,
+            "denom_min": denom_min,
+            "n": len(a)
+        }
 
 
 def top1_agreement(rows_a: Sequence[Sequence[float]],
                    rows_b: Sequence[Sequence[float]]) -> dict[str, Any]:
-    pass
+    # pass
+
+    agree = 0
+    first_disagreement = None
+
+    if not (len(rows_a) == len(rows_b)):
+        raise(AgreementError)
+    else:
+        for k in range(len(rows_a)):
+            if not (rows_a[k] and rows_b[k] and (len(rows_a[k]) == len(rows_b[k]))): # non-empty and (C = |uk| = |vk|)
+                raise(AgreementError)
+            else:
+                for j in range(len(rows_a[k])):
+                    if not (_finite(rows_a[k][j], f"{rows_a[k][j]}") and _finite(rows_b[k][j], f"{rows_b[k][j]}")):
+                        raise(AgreementError)
+
+            i_a = round(max(rows_a[k]), 1)
+            i_b = round(max(rows_b[k]), 1)
+
+            if i_a == i_b:
+                agree += 1
+            elif not first_disagreement:
+                first_disagreement = k
+
+        rate = agree/len(rows_a)
+        disagree = len(rows_a) - agree
+
+        print(rows_a)
+        print(rows_b)
+
+        return {
+            "n": len(rows_a),
+            "agree": agree,
+            "disagree": disagree,
+            "rate": rate,
+            "first_disagreement": first_disagreement
+        }
 
 
 def decision_margin(rows: Sequence[Sequence[float]],
                     tol: float) -> dict[str, Any]:
-    pass
+    # pass
 
+    m = {}
+
+    if not (rows and tol >= 0):
+        raise(AgreementError)
+    else:
+        for k in range(len(rows)):
+            if not len(rows[k]) > 2:
+                raise(AgreementError)
+            else:
+                s = list(rows[k])
+                s.sort(reverse=True)
+                m[k] = s[0] - s[1]
+
+                if m[k] < 0:
+                    raise(AgreementError)
+
+    minimum = min(m)
+    argmin = 
+ 
 #############################################################
 ###############  Main function starts here ##################
 #############################################################
@@ -231,8 +293,8 @@ def main(
     timings_optimized = data["timings_optimized"]
     flat_logits_base = data["flat_logits_base"]
     flat_logits_opt = data["flat_logits_opt"]
-    # batched_scores_base = data["batched_scores_base"]
-    # batched_scores_opt = data["batched_scores_opt"]
+    batched_scores_base = data["batched_scores_base"]
+    batched_scores_opt = data["batched_scores_opt"]
 
     # # 2. Execute metric and report functions
     report_base = latency_report(timings_base)
@@ -240,9 +302,9 @@ def main(
     perf_speedup = speedup(base_ms=report_base["p50"], other_ms=report_opt["p50"])
 
     abs_dev = max_abs_dev(flat_logits_opt, flat_logits_base)
-    # rel_dev = max_rel_dev(flat_logits_opt, flat_logits_base, floor=REL_FLOOR)
+    rel_dev = max_rel_dev(flat_logits_opt, flat_logits_base, floor=REL_FLOOR)
 
-    # agreement = top1_agreement(batched_scores_opt, batched_scores_base)
+    agreement = top1_agreement(batched_scores_opt, batched_scores_base)
     # margin = decision_margin(batched_scores_base, tol=abs_dev["max_abs"])
 
     # 3. Structure output results
@@ -254,14 +316,14 @@ def main(
         },
         "deviations": {
             "max_abs_dev": abs_dev,
-    #         "max_rel_dev": rel_dev,
-    #         "summary_sentence": deviation_sentence(abs_dev, rel_dev),
+            "max_rel_dev": rel_dev,
+            "summary_sentence": deviation_sentence(abs_dev, rel_dev),
         },
-    #     "agreement": {
-    #         "top1_agreement": agreement,
+        "agreement": {
+            "top1_agreement": agreement,
     #         "decision_margin": margin,
     #         "decision_sentence": decision_sentence(margin, tol=abs_dev["max_abs"]),
-    #     },
+        },
     }
 
     # 4. Save results to JSON

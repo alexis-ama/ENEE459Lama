@@ -31,6 +31,23 @@
       "a": 2.42,
       "b": 2.45,
       "n": 10
+    },
+    "max_rel_dev": {
+      "max_rel": 0.4999999999999999,
+      "index": 5,
+      "floored": 0,
+      "denom_min": 0.02,
+      "n": 10
+    },
+    "summary_sentence": "max |a-b| = 0.03 at index 2; max relative = 0.5"
+  },
+  "agreement": {
+    "top1_agreement": {
+      "n": 3,
+      "agree": 3,
+      "disagree": 0,
+      "rate": 1.0,
+      "first_disagreement": null
     }
   }
 }
